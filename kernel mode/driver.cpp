@@ -381,10 +381,24 @@ NTSTATUS initialize_driver(PDRIVER_OBJECT drv_obj, PUNICODE_STRING path) {
 
 	NTSTATUS status = STATUS_SUCCESS;
 	PDEVICE_OBJECT device_obj = NULL;
+	PFILE_OBJECT file_obj = NULL;
 
 	UNICODE_STRING name, link;
 	RtlInitUnicodeString(&name, L"\\Device\\paysoniscoolio"); // driver name
 	RtlInitUnicodeString(&link, L"\\DosDevices\\paysoniscoolio"); // driver name
+
+	//checking existing
+	NTSTATUS linkExists = IoGetDeviceObjectPointer(&link, FILE_READ_DATA, &file_obj, &device_obj);
+	NTSTATUS deviceExists = IoGetDeviceObjectPointer(&name, FILE_READ_DATA, &file_obj, &device_obj);
+
+	if (NT_SUCCESS(deviceExists)) {
+		if (NT_SUCCESS(linkExists)) { //if device and link already exist, probably driver already has been loaded.
+			return 0;
+		}
+		else { //if device exists, but link doesn't, this is a bug caused by hibernation in windows, we just need to delete old device.
+			IoDeleteDevice(device_obj);
+		}
+	}
 
 	// Create the device
 	status = IoCreateDevice(drv_obj, 0, &name, FILE_DEVICE_UNKNOWN, FILE_DEVICE_SECURE_OPEN, FALSE, &device_obj);
@@ -416,10 +430,11 @@ NTSTATUS initialize_driver(PDRIVER_OBJECT drv_obj, PUNICODE_STRING path) {
 	return status;
 }
 
-
-NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath) {
-	UNREFERENCED_PARAMETER(DriverObject);
-	UNREFERENCED_PARAMETER(RegistryPath);
-
-	return IoCreateDriver(NULL, &initialize_driver);
+extern "C"
+NTSTATUS DriverEntry(
+	PDRIVER_OBJECT DriverObject,
+	PUNICODE_STRING RegistryPath
+)
+{
+	return IoCreateDriver(nullptr, &initialize_driver);
 }
